@@ -1,0 +1,87 @@
+:root {
+  color-scheme: dark;
+  font-family: "Inter", "Segoe UI", sans-serif;
+  --bg: #0b1220;
+  --panel: #121a2b;
+  --muted: #9fb0d0;
+  --text: #ebf0ff;
+  --accent: #3b82f6;
+  --border: #27324a;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: radial-gradient(circle at top, #111b2f, #0b1220 60%); color: var(--text); }
+
+.app {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(12, 1fr);
+}
+
+.topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.status { color: var(--muted); }
+.panel {
+  background: color-mix(in hsl, var(--panel), black 8%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.video-panel { grid-column: span 8; }
+.motion-panel, .light-panel, .capture-panel, .serial-panel { grid-column: span 4; }
+.serial-panel { grid-column: 1 / -1; }
+
+.video {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #05070d;
+  border: 1px solid var(--border);
+}
+
+.row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+
+button, input, select {
+  background: #101a30;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+input, select { min-width: 90px; }
+
+label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+pre {
+  max-height: 240px;
+  overflow: auto;
+  background: #080c17;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 12px;
+}
+.muted { color: var(--muted); font-size: 12px; }
+
+@media (max-width: 1000px) {
+  .video-panel,
+  .motion-panel,
+  .light-panel,
+  .capture-panel,
+  .serial-panel {
+    grid-column: 1 / -1;
+  }
+}
