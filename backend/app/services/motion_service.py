@@ -25,12 +25,6 @@ class MotionService:
         self._refresh_position_from_serial()
         return reply or "ok"
 
-    def raw(self, command: str) -> str:
-        reply = serial_service.send_line(command, expect_reply=True, timeout_s=3.0)
-        if command.strip() in {"p?", "position?"}:
-            self._parse_and_store_position(reply)
-        return reply or "ok"
-
     def position(self) -> dict[str, int]:
         self._refresh_position_from_serial()
         return self.last_position

@@ -62,24 +62,18 @@ def camera_capture(req: CameraCaptureRequest) -> CameraCaptureResponse:
 @router.post("/motion/jog")
 def motion_jog(req: JogRequest) -> dict[str, str]:
     try:
-        reply = motion_service.jog(req.axis, req.direction, req.steps)
+        motion_service.jog(req.axis, req.direction, req.steps)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    serial_log_service.append("tx", f"jog {req.axis} {req.direction} {req.steps}")
-    if reply:
-        serial_log_service.append("rx", reply)
     return {"status": "ok"}
 
 
 @router.post("/motion/raw")
 def motion_raw(req: RawCommandRequest) -> dict[str, str]:
     try:
-        reply = motion_service.raw(req.command)
+        reply = serial_service.send_line(req.command, expect_reply=True, timeout_s=3.0)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    serial_log_service.append("tx", req.command)
-    if reply:
-        serial_log_service.append("rx", reply)
     return {"status": "ok", "reply": reply or ""}
 
 
@@ -98,7 +92,6 @@ def light_set(req: RgbwRequest) -> dict[str, str]:
         motion_service.set_rgbw(req.r, req.g, req.b, req.w, req.bri)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    serial_log_service.append("tx", f"led {req.r} {req.g} {req.b} {req.w} {req.bri}")
     return {"status": "ok"}
 
 
@@ -113,7 +106,6 @@ def light_preset(req: LightPresetRequest) -> dict[str, str]:
             raise HTTPException(status_code=400, detail="Unsupported preset")
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    serial_log_service.append("tx", f"preset {req.preset}")
     return {"status": "ok"}
 
 

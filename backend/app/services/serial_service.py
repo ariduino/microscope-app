@@ -10,6 +10,7 @@ import serial
 from serial.tools import list_ports
 
 from app.core.config import settings
+from app.services.serial_log_service import serial_log_service
 
 
 @dataclass
@@ -65,8 +66,15 @@ class SerialService:
                 raise RuntimeError("Serial controller not connected")
 
             assert self._ser is not None
-            self._ser.write((command.strip() + "\n").encode("utf-8"))
-            self._ser.flush()
+            try:
+                stripped = command.strip()
+                serial_log_service.append("tx", stripped)
+                self._ser.write((stripped + "\n").encode("utf-8"))
+                self._ser.flush()
+            except Exception as exc:
+                self._last_error = f"Serial write failed: {exc}"
+                self.disconnect()
+                raise RuntimeError(self._last_error)
 
             if not expect_reply:
                 return ""
@@ -74,13 +82,19 @@ class SerialService:
             lines: list[str] = []
             start = time.time()
             while time.time() - start < timeout_s:
-                raw = self._ser.readline()
+                try:
+                    raw = self._ser.readline()
+                except Exception as exc:
+                    self._last_error = f"Serial read failed: {exc}"
+                    self.disconnect()
+                    raise RuntimeError(self._last_error)
                 if not raw:
                     continue
                 line = raw.decode("utf-8", errors="replace").strip()
                 if not line:
                     continue
                 lines.append(line)
+                serial_log_service.append("rx", line)
 
                 low = line.lower()
                 if low in {"done", "done.", "ok"}:
