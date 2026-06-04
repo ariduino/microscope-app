@@ -58,7 +58,6 @@ downloads
 eggs
 parts
 src/*.egg-info
-lib
 lib64
 build/
 dist/
@@ -73,3 +72,14 @@ docs/API/*
 
 # IDE files
 .vscode/
+
+# Project-local runtime and build artifacts
+.pycache/
+__pycache__/
+backend/.venv/
+frontend/node_modules/
+frontend/dist/
+frontend/.npm-cache/
+MicroscopeCaptures/
+!frontend/src/lib/
+!frontend/src/lib/**
