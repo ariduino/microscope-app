@@ -21,26 +21,15 @@ class MotionService:
 
         cmd_map = {"x": "mrx", "y": "mry", "z": "mrz"}
         cmd = f"{cmd_map[axis]} {signed_steps}"
-        try:
-            reply = serial_service.send_line(cmd, expect_reply=True, timeout_s=3.0)
-            self._refresh_position_from_serial()
-            return reply or "ok"
-        except Exception:
-            # Keep dev-mode fallback behavior when serial is unavailable.
-            self.last_position[axis] += signed_steps
-            return f"ok {axis}={self.last_position[axis]}"
+        reply = serial_service.send_line(cmd, expect_reply=True, timeout_s=3.0)
+        self._refresh_position_from_serial()
+        return reply or "ok"
 
     def raw(self, command: str) -> str:
-        try:
-            reply = serial_service.send_line(command, expect_reply=True, timeout_s=3.0)
-            if command.strip() in {"p?", "position?"}:
-                self._parse_and_store_position(reply)
-            return reply or "ok"
-        except Exception:
-            if command.strip() == "p?":
-                p = self.last_position
-                return f"{p['x']} {p['y']} {p['z']}"
-            return "ok"
+        reply = serial_service.send_line(command, expect_reply=True, timeout_s=3.0)
+        if command.strip() in {"p?", "position?"}:
+            self._parse_and_store_position(reply)
+        return reply or "ok"
 
     def position(self) -> dict[str, int]:
         self._refresh_position_from_serial()
@@ -48,19 +37,13 @@ class MotionService:
 
     def set_rgbw(self, r: int, g: int, b: int, w: int, bri: int) -> None:
         cmd = f"led {r} {g} {b} {w} {bri}"
-        try:
-            serial_service.send_line(cmd, expect_reply=True, timeout_s=2.0)
-        except Exception:
-            pass
+        serial_service.send_line(cmd, expect_reply=True, timeout_s=2.0)
         self.last_rgbw = (r, g, b, w)
         self.last_bri = bri
 
     def _refresh_position_from_serial(self) -> None:
-        try:
-            reply = serial_service.send_line("p?", expect_reply=True, timeout_s=1.5)
-            self._parse_and_store_position(reply)
-        except Exception:
-            pass
+        reply = serial_service.send_line("p?", expect_reply=True, timeout_s=1.5)
+        self._parse_and_store_position(reply)
 
     def _parse_and_store_position(self, reply: str) -> None:
         # Firmware returns "x y z" as plain ints.

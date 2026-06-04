@@ -48,6 +48,7 @@ function App() {
   const [raw, setRaw] = useState("p?");
   const [log, setLog] = useState<Array<{ ts: string; dir: string; msg: string }>>([]);
   const [captureInfo, setCaptureInfo] = useState("");
+  const [appError, setAppError] = useState<string | null>(null);
   const serialPreRef = useRef<HTMLPreElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
 
@@ -57,8 +58,8 @@ function App() {
     try {
       const p = await getPosition();
       setPosition(p);
-    } catch {
-      // intentionally silent while hardware service is not connected
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : "Failed to refresh position");
     }
   }
 
@@ -93,7 +94,10 @@ function App() {
   useEffect(() => {
     getHealth()
       .then((h) => setHealth(h.status))
-      .catch(() => setHealth("offline"));
+      .catch(() => {
+        setHealth("offline");
+        setAppError("API health check failed");
+      });
 
     refreshPosition();
     refreshLog();
@@ -135,6 +139,15 @@ function App() {
           </div>
         </header>
 
+        {appError ? (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            <span>{appError}</span>
+            <Button size="sm" variant="outline" onClick={() => setAppError(null)}>
+              Dismiss
+            </Button>
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
           <Card className="xl:col-span-8">
             <CardHeader>
@@ -149,8 +162,13 @@ function App() {
                   size="sm"
                   variant="outline"
                   onClick={async () => {
-                    await restartCamera();
-                    await refreshStatuses();
+                    try {
+                      await restartCamera();
+                      await refreshStatuses();
+                      setAppError(null);
+                    } catch (error) {
+                      setAppError(error instanceof Error ? error.message : "Failed to restart camera");
+                    }
                   }}
                 >
                   Restart Camera
@@ -172,12 +190,60 @@ function App() {
                 <Input id="steps" type="number" min={1} max={20000} value={steps} onChange={(e) => setSteps(Number(e.target.value))} />
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <Button variant="secondary" onClick={() => jog("y", "positive", steps)}>Y+</Button>
-                <Button variant="secondary" onClick={() => jog("z", "positive", steps)}>Z+</Button>
-                <Button variant="secondary" onClick={() => jog("x", "positive", steps)}>X+</Button>
-                <Button variant="outline" onClick={() => jog("y", "negative", steps)}>Y-</Button>
-                <Button variant="outline" onClick={() => jog("z", "negative", steps)}>Z-</Button>
-                <Button variant="outline" onClick={() => jog("x", "negative", steps)}>X-</Button>
+                <Button variant="secondary" onClick={async () => {
+                  try {
+                    await jog("y", "positive", steps);
+                    await refreshPosition();
+                    setAppError(null);
+                  } catch (error) {
+                    setAppError(error instanceof Error ? error.message : "Failed to jog Y+");
+                  }
+                }}>Y+</Button>
+                <Button variant="secondary" onClick={async () => {
+                  try {
+                    await jog("z", "positive", steps);
+                    await refreshPosition();
+                    setAppError(null);
+                  } catch (error) {
+                    setAppError(error instanceof Error ? error.message : "Failed to jog Z+");
+                  }
+                }}>Z+</Button>
+                <Button variant="secondary" onClick={async () => {
+                  try {
+                    await jog("x", "positive", steps);
+                    await refreshPosition();
+                    setAppError(null);
+                  } catch (error) {
+                    setAppError(error instanceof Error ? error.message : "Failed to jog X+");
+                  }
+                }}>X+</Button>
+                <Button variant="outline" onClick={async () => {
+                  try {
+                    await jog("y", "negative", steps);
+                    await refreshPosition();
+                    setAppError(null);
+                  } catch (error) {
+                    setAppError(error instanceof Error ? error.message : "Failed to jog Y-");
+                  }
+                }}>Y-</Button>
+                <Button variant="outline" onClick={async () => {
+                  try {
+                    await jog("z", "negative", steps);
+                    await refreshPosition();
+                    setAppError(null);
+                  } catch (error) {
+                    setAppError(error instanceof Error ? error.message : "Failed to jog Z-");
+                  }
+                }}>Z-</Button>
+                <Button variant="outline" onClick={async () => {
+                  try {
+                    await jog("x", "negative", steps);
+                    await refreshPosition();
+                    setAppError(null);
+                  } catch (error) {
+                    setAppError(error instanceof Error ? error.message : "Failed to jog X-");
+                  }
+                }}>X-</Button>
               </div>
               <Separator />
               <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -189,8 +255,13 @@ function App() {
                   size="sm"
                   variant="outline"
                   onClick={async () => {
-                    await reconnectSerial();
-                    await refreshStatuses();
+                    try {
+                      await reconnectSerial();
+                      await refreshStatuses();
+                      setAppError(null);
+                    } catch (error) {
+                      setAppError(error instanceof Error ? error.message : "Failed to reconnect serial");
+                    }
                   }}
                 >
                   Reconnect Serial
@@ -231,14 +302,33 @@ function App() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <Button
-                  onClick={() => {
-                    setRgbw(r, g, b, w, brightness);
+                  onClick={async () => {
+                    try {
+                      await setRgbw(r, g, b, w, brightness);
+                      setAppError(null);
+                    } catch (error) {
+                      setAppError(error instanceof Error ? error.message : "Failed to set LED state");
+                    }
                   }}
                 >
                   Apply
                 </Button>
-                <Button variant="secondary" onClick={() => setPreset("white_full")}>White Full</Button>
-                <Button variant="outline" onClick={() => setPreset("off")}>Off</Button>
+                <Button variant="secondary" onClick={async () => {
+                  try {
+                    await setPreset("white_full");
+                    setAppError(null);
+                  } catch (error) {
+                    setAppError(error instanceof Error ? error.message : "Failed to set white preset");
+                  }
+                }}>White Full</Button>
+                <Button variant="outline" onClick={async () => {
+                  try {
+                    await setPreset("off");
+                    setAppError(null);
+                  } catch (error) {
+                    setAppError(error instanceof Error ? error.message : "Failed to turn LED off");
+                  }
+                }}>Off</Button>
               </div>
             </CardContent>
           </Card>
@@ -273,8 +363,13 @@ function App() {
               <Button
                 className="w-full"
                 onClick={async () => {
-                  const out = await capture(project, session, format);
-                  setCaptureInfo(`${out.image_path} | ${out.sidecar_path}`);
+                  try {
+                    const out = await capture(project, session, format);
+                    setCaptureInfo(`${out.image_path} | ${out.sidecar_path}`);
+                    setAppError(null);
+                  } catch (error) {
+                    setAppError(error instanceof Error ? error.message : "Failed to capture image");
+                  }
                 }}
               >
                 Capture Image
@@ -296,16 +391,26 @@ function App() {
                     if (e.key !== "Enter") return;
                     e.preventDefault();
                     if (!raw.trim()) return;
-                    await sendRaw(raw);
-                    setRaw("");
-                    await refreshLog();
+                    try {
+                      await sendRaw(raw);
+                      setRaw("");
+                      await refreshLog();
+                      setAppError(null);
+                    } catch (error) {
+                      setAppError(error instanceof Error ? error.message : "Failed to send serial command");
+                    }
                   }}
                 />
                 <Button
                   onClick={async () => {
-                    await sendRaw(raw);
-                    setRaw("");
-                    await refreshLog();
+                    try {
+                      await sendRaw(raw);
+                      setRaw("");
+                      await refreshLog();
+                      setAppError(null);
+                    } catch (error) {
+                      setAppError(error instanceof Error ? error.message : "Failed to send serial command");
+                    }
                   }}
                 >
                   Send

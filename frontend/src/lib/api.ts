@@ -6,7 +6,16 @@ async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!res.ok) {
-    throw new Error(`Request failed: ${res.status}`);
+    let detail = `Request failed: ${res.status}`;
+    try {
+      const data = (await res.json()) as { detail?: string };
+      if (data.detail) {
+        detail = data.detail;
+      }
+    } catch {
+      // Fall back to generic status-based message when no JSON body is present.
+    }
+    throw new Error(detail);
   }
   return (await res.json()) as T;
 }

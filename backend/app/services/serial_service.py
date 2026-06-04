@@ -23,6 +23,17 @@ class SerialService:
 
     def ensure_connected(self) -> bool:
         if self._ser and self._ser.is_open:
+            if self._connected_port and self._connected_port in {p["device"] for p in self.list_ports()}:
+                return True
+            self._last_error = "Serial device was disconnected"
+            self.disconnect()
+            return False
+
+        if self._ser and not self._ser.is_open:
+            self.disconnect()
+            return False
+
+        if self._ser and self._ser.is_open:
             return True
 
         port = settings.serial_port or self._autodetect_port()
@@ -98,7 +109,11 @@ class SerialService:
 
     def status(self) -> dict[str, object]:
         ports = self.list_ports()
-        connected = bool(self._ser and self._ser.is_open)
+        port_names = {p["device"] for p in ports}
+        connected = bool(self._ser and self._ser.is_open and self._connected_port in port_names)
+        if not connected and self._ser is not None:
+            self._last_error = self._last_error or "Serial device is not available"
+            self.disconnect()
         return {
             "connected": connected,
             "port": self._connected_port if connected else None,

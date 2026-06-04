@@ -61,7 +61,10 @@ def camera_capture(req: CameraCaptureRequest) -> CameraCaptureResponse:
 
 @router.post("/motion/jog")
 def motion_jog(req: JogRequest) -> dict[str, str]:
-    reply = motion_service.jog(req.axis, req.direction, req.steps)
+    try:
+        reply = motion_service.jog(req.axis, req.direction, req.steps)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     serial_log_service.append("tx", f"jog {req.axis} {req.direction} {req.steps}")
     if reply:
         serial_log_service.append("rx", reply)
@@ -70,7 +73,10 @@ def motion_jog(req: JogRequest) -> dict[str, str]:
 
 @router.post("/motion/raw")
 def motion_raw(req: RawCommandRequest) -> dict[str, str]:
-    reply = motion_service.raw(req.command)
+    try:
+        reply = motion_service.raw(req.command)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     serial_log_service.append("tx", req.command)
     if reply:
         serial_log_service.append("rx", reply)
@@ -79,27 +85,34 @@ def motion_raw(req: RawCommandRequest) -> dict[str, str]:
 
 @router.get("/motion/position")
 def motion_position() -> dict[str, int]:
-    pos = motion_service.position()
-    if pos is None:
-        raise HTTPException(status_code=503, detail="Position unavailable")
+    try:
+        pos = motion_service.position()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     return pos
 
 
 @router.post("/light/set_rgbw")
 def light_set(req: RgbwRequest) -> dict[str, str]:
-    motion_service.set_rgbw(req.r, req.g, req.b, req.w, req.bri)
+    try:
+        motion_service.set_rgbw(req.r, req.g, req.b, req.w, req.bri)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     serial_log_service.append("tx", f"led {req.r} {req.g} {req.b} {req.w} {req.bri}")
     return {"status": "ok"}
 
 
 @router.post("/light/preset")
 def light_preset(req: LightPresetRequest) -> dict[str, str]:
-    if req.preset == "white_full":
-        motion_service.set_rgbw(0, 0, 0, 255, 255)
-    elif req.preset == "off":
-        motion_service.set_rgbw(0, 0, 0, 0, 0)
-    else:
-        raise HTTPException(status_code=400, detail="Unsupported preset")
+    try:
+        if req.preset == "white_full":
+            motion_service.set_rgbw(0, 0, 0, 255, 255)
+        elif req.preset == "off":
+            motion_service.set_rgbw(0, 0, 0, 0, 0)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported preset")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     serial_log_service.append("tx", f"preset {req.preset}")
     return {"status": "ok"}
 
