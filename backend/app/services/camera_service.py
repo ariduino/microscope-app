@@ -44,6 +44,8 @@ class CameraService:
         self._mode: str = "auto"
         self._manual_exposure_time: int = 10000
         self._manual_analogue_gain: float = 1.0
+        self._preview_resolution: str = "1920x1080"
+        self._capture_resolution: str = "3280x2464"
         self._live_exposure_time: Optional[int] = None
         self._live_analogue_gain: Optional[float] = None
         self._live_ae_enabled: Optional[bool] = None
@@ -61,7 +63,7 @@ class CameraService:
             try:
                 self._output = _StreamingOutput()
                 self._camera = Picamera2()
-                config = self._camera.create_video_configuration(main={"size": (1280, 720)})
+                config = self._camera.create_video_configuration(main={"size": self._parse_resolution(self._preview_resolution)})
                 self._camera.configure(config)
                 self._apply_settings_locked()
                 self._camera.start_recording(JpegEncoder(), FileOutput(self._output))
@@ -81,9 +83,8 @@ class CameraService:
             self.running = False
 
     def restart(self) -> None:
-        self.stop()
-        time.sleep(0.5)
-        self.start()
+        with self._lock:
+            self._restart_locked()
 
     def status(self) -> dict[str, object]:
         with self._lock:
@@ -97,23 +98,40 @@ class CameraService:
                 "mode": self._mode,
                 "exposure_time": self._manual_exposure_time,
                 "analogue_gain": self._manual_analogue_gain,
+                "preview_resolution": self._preview_resolution,
+                "capture_resolution": self._capture_resolution,
                 "live_exposure_time": self._live_exposure_time,
                 "live_analogue_gain": self._live_analogue_gain,
                 "ae_enabled": self._live_ae_enabled,
             },
         }
 
-    def update_settings(self, mode: str, exposure_time: Optional[int], analogue_gain: Optional[float]) -> dict[str, object]:
+    def update_settings(
+        self,
+        mode: str,
+        exposure_time: Optional[int],
+        analogue_gain: Optional[float],
+        preview_resolution: Optional[str],
+        capture_resolution: Optional[str],
+    ) -> dict[str, object]:
         with self._lock:
+            preview_changed = preview_resolution is not None and preview_resolution != self._preview_resolution
             self._mode = mode
             if exposure_time is not None:
                 self._manual_exposure_time = exposure_time
             if analogue_gain is not None:
                 self._manual_analogue_gain = analogue_gain
+            if preview_resolution is not None:
+                self._preview_resolution = preview_resolution
+            if capture_resolution is not None:
+                self._capture_resolution = capture_resolution
 
             if self.running and self._camera is not None:
-                self._apply_settings_locked()
-                self._refresh_live_settings_locked()
+                if preview_changed:
+                    self._restart_locked()
+                else:
+                    self._apply_settings_locked()
+                    self._refresh_live_settings_locked()
 
             return self._settings_payload()
 
@@ -151,13 +169,19 @@ class CameraService:
             sidecar_path = image_path.with_suffix(".json")
 
             if self._camera is not None and self.running:
-                self._camera.capture_file(str(image_path), format=req.format)
+                capture_config = self._camera.create_still_configuration(
+                    main={"size": self._parse_resolution(self._capture_resolution)}
+                )
+                self._apply_settings_locked()
+                self._camera.switch_mode_and_capture_file(capture_config, str(image_path), format=req.format)
                 self._refresh_live_settings_locked()
                 camera_settings = {
                     "status": "captured",
                     "mode": "picamera2",
                     "last_error": self._last_error,
                     "camera_mode": self._mode,
+                    "preview_resolution": self._preview_resolution,
+                    "capture_resolution": self._capture_resolution,
                     "requested_exposure_time": self._manual_exposure_time if self._mode == "manual" else None,
                     "requested_analogue_gain": self._manual_analogue_gain if self._mode == "manual" else None,
                     "ae_enabled": self._live_ae_enabled,
@@ -172,6 +196,8 @@ class CameraService:
                     "mode": "stub",
                     "last_error": self._last_error,
                     "camera_mode": self._mode,
+                    "preview_resolution": self._preview_resolution,
+                    "capture_resolution": self._capture_resolution,
                     "requested_exposure_time": self._manual_exposure_time if self._mode == "manual" else None,
                     "requested_analogue_gain": self._manual_analogue_gain if self._mode == "manual" else None,
                     "ae_enabled": self._live_ae_enabled,
@@ -217,6 +243,28 @@ class CameraService:
         except Exception:
             pass
 
+    def _restart_locked(self) -> None:
+        self._close_camera()
+        self.running = False
+        time.sleep(0.5)
+        if Picamera2 is None:
+            self._last_error = "Picamera2 is not available in this environment"
+            return
+        try:
+            self._output = _StreamingOutput()
+            self._camera = Picamera2()
+            config = self._camera.create_video_configuration(main={"size": self._parse_resolution(self._preview_resolution)})
+            self._camera.configure(config)
+            self._apply_settings_locked()
+            self._camera.start_recording(JpegEncoder(), FileOutput(self._output))
+            self.running = True
+            self._last_error = None
+            self._refresh_live_settings_locked()
+        except Exception as exc:
+            self._close_camera()
+            self._last_error = f"Failed to start camera: {exc}"
+            self.running = False
+
     def _apply_settings_locked(self) -> None:
         if self._camera is None:
             return
@@ -249,6 +297,8 @@ class CameraService:
             "mode": self._mode,
             "exposure_time": self._manual_exposure_time,
             "analogue_gain": self._manual_analogue_gain,
+            "preview_resolution": self._preview_resolution,
+            "capture_resolution": self._capture_resolution,
             "live_exposure_time": self._live_exposure_time,
             "live_analogue_gain": self._live_analogue_gain,
             "ae_enabled": self._live_ae_enabled,
@@ -272,6 +322,11 @@ class CameraService:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    @staticmethod
+    def _parse_resolution(value: str) -> tuple[int, int]:
+        width_str, height_str = value.lower().split("x", 1)
+        return int(width_str), int(height_str)
 
     def _next_index(self, directory: Path, project: str, fmt: str) -> int:
         prefix = f"{project}-"

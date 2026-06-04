@@ -36,6 +36,8 @@ function App() {
     mode: "auto" | "manual";
     exposure_time: number | null;
     analogue_gain: number | null;
+    preview_resolution: string;
+    capture_resolution: string;
     live_exposure_time: number | null;
     live_analogue_gain: number | null;
     ae_enabled: boolean | null;
@@ -44,11 +46,15 @@ function App() {
     mode: "auto",
     exposure_time: 10000,
     analogue_gain: 1.0,
+    preview_resolution: "1920x1080",
+    capture_resolution: "3280x2464",
     live_exposure_time: null,
     live_analogue_gain: null,
     ae_enabled: null,
     last_error: null,
   });
+  const [cameraExposureDraft, setCameraExposureDraft] = useState("10000");
+  const [cameraGainDraft, setCameraGainDraft] = useState("1.0");
   const [serialStatus, setSerialStatus] = useState<{ connected: boolean; port: string | null; last_error: string | null }>({
     connected: false,
     port: null,
@@ -70,7 +76,10 @@ function App() {
   const [streamNonce, setStreamNonce] = useState(0);
   const serialPreRef = useRef<HTMLPreElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
+  const cameraSettingsDirtyRef = useRef(false);
   const streamUrl = `/api/v1/camera/stream?v=${streamNonce}`;
+  const previewResolutionOptions = ["1280x720", "1640x1232", "1920x1080"];
+  const captureResolutionOptions = ["1920x1080", "1640x1232", "3280x2464"];
 
   async function refreshPosition() {
     try {
@@ -99,6 +108,10 @@ function App() {
         last_error: cam.last_error,
       });
       setCameraSettings(cam.settings);
+      if (!cameraSettingsDirtyRef.current) {
+        setCameraExposureDraft(cam.settings.exposure_time == null ? "" : String(cam.settings.exposure_time));
+        setCameraGainDraft(cam.settings.analogue_gain == null ? "" : String(cam.settings.analogue_gain));
+      }
     } catch {
       // ignore
     }
@@ -208,10 +221,22 @@ function App() {
                   <Select
                     value={cameraSettings.mode}
                     onValueChange={async (value) => {
-                      const mode = value as "auto" | "manual";
+                        const mode = value as "auto" | "manual";
                       try {
-                        const settings = await updateCameraSettings(mode, cameraSettings.exposure_time, cameraSettings.analogue_gain);
+                        const exposureTime = cameraExposureDraft.trim() ? Number(cameraExposureDraft) : null;
+                        const analogueGain = cameraGainDraft.trim() ? Number(cameraGainDraft) : null;
+                        const settings = await updateCameraSettings(
+                          mode,
+                          exposureTime,
+                          analogueGain,
+                          cameraSettings.preview_resolution,
+                          cameraSettings.capture_resolution
+                        );
                         setCameraSettings(settings);
+                        setCameraExposureDraft(settings.exposure_time == null ? "" : String(settings.exposure_time));
+                        setCameraGainDraft(settings.analogue_gain == null ? "" : String(settings.analogue_gain));
+                        cameraSettingsDirtyRef.current = false;
+                        setStreamNonce((current) => current + 1);
                         setAppError(null);
                       } catch (error) {
                         setAppError(error instanceof Error ? error.message : "Failed to update camera mode");
@@ -234,14 +259,12 @@ function App() {
                       id="exposure-time"
                       type="number"
                       min={1}
-                      value={cameraSettings.exposure_time ?? ""}
+                      value={cameraExposureDraft}
                       disabled={cameraSettings.mode !== "manual"}
-                      onChange={(e) =>
-                        setCameraSettings((current) => ({
-                          ...current,
-                          exposure_time: e.target.value ? Number(e.target.value) : null,
-                        }))
-                      }
+                      onChange={(e) => {
+                        setCameraExposureDraft(e.target.value);
+                        cameraSettingsDirtyRef.current = true;
+                      }}
                     />
                   </div>
                   <div className="space-y-1">
@@ -251,27 +274,79 @@ function App() {
                       type="number"
                       min={1}
                       step="0.1"
-                      value={cameraSettings.analogue_gain ?? ""}
+                      value={cameraGainDraft}
                       disabled={cameraSettings.mode !== "manual"}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        setCameraGainDraft(e.target.value);
+                        cameraSettingsDirtyRef.current = true;
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="preview-resolution">Preview Resolution</Label>
+                    <Select
+                      value={cameraSettings.preview_resolution}
+                      onValueChange={(value) =>
                         setCameraSettings((current) => ({
                           ...current,
-                          analogue_gain: e.target.value ? Number(e.target.value) : null,
+                          preview_resolution: value,
                         }))
                       }
-                    />
+                    >
+                      <SelectTrigger id="preview-resolution">
+                        <SelectValue placeholder="Select preview resolution" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {previewResolutionOptions.map((value) => (
+                          <SelectItem key={value} value={value}>
+                            {value}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="capture-resolution">Capture Resolution</Label>
+                    <Select
+                      value={cameraSettings.capture_resolution}
+                      onValueChange={(value) =>
+                        setCameraSettings((current) => ({
+                          ...current,
+                          capture_resolution: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger id="capture-resolution">
+                        <SelectValue placeholder="Select capture resolution" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {captureResolutionOptions.map((value) => (
+                          <SelectItem key={value} value={value}>
+                            {value}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <Button
                   variant="outline"
                   onClick={async () => {
                     try {
+                      const exposureTime = cameraExposureDraft.trim() ? Number(cameraExposureDraft) : null;
+                      const analogueGain = cameraGainDraft.trim() ? Number(cameraGainDraft) : null;
                       const settings = await updateCameraSettings(
                         cameraSettings.mode,
-                        cameraSettings.exposure_time,
-                        cameraSettings.analogue_gain
+                        exposureTime,
+                        analogueGain,
+                        cameraSettings.preview_resolution,
+                        cameraSettings.capture_resolution
                       );
                       setCameraSettings(settings);
+                      setCameraExposureDraft(settings.exposure_time == null ? "" : String(settings.exposure_time));
+                      setCameraGainDraft(settings.analogue_gain == null ? "" : String(settings.analogue_gain));
+                      cameraSettingsDirtyRef.current = false;
+                      setStreamNonce((current) => current + 1);
                       setAppError(null);
                     } catch (error) {
                       setAppError(error instanceof Error ? error.message : "Failed to apply camera settings");
@@ -285,6 +360,8 @@ function App() {
                   <p>Live Gain: {cameraSettings.live_analogue_gain ?? "n/a"}</p>
                   <p>AE Enabled: {cameraSettings.ae_enabled == null ? "n/a" : cameraSettings.ae_enabled ? "yes" : "no"}</p>
                   <p>Mode Used: {cameraSettings.mode}</p>
+                  <p>Preview Res: {cameraSettings.preview_resolution}</p>
+                  <p>Capture Res: {cameraSettings.capture_resolution}</p>
                 </div>
               </div>
             </CardContent>

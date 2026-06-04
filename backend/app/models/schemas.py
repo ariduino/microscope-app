@@ -22,12 +22,16 @@ class CameraSettingsRequest(BaseModel):
     mode: Literal["auto", "manual"]
     exposure_time: Optional[int] = Field(default=None, ge=1)
     analogue_gain: Optional[float] = Field(default=None, ge=1.0)
+    preview_resolution: Optional[str] = None
+    capture_resolution: Optional[str] = None
 
 
 class CameraSettingsResponse(BaseModel):
     mode: Literal["auto", "manual"]
     exposure_time: Optional[int]
     analogue_gain: Optional[float]
+    preview_resolution: str
+    capture_resolution: str
     live_exposure_time: Optional[int]
     live_analogue_gain: Optional[float]
     ae_enabled: Optional[bool]

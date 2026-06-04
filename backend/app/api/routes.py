@@ -56,7 +56,13 @@ def camera_settings() -> CameraSettingsResponse:
 
 @router.post("/camera/settings", response_model=CameraSettingsResponse)
 def camera_update_settings(req: CameraSettingsRequest) -> CameraSettingsResponse:
-    payload = camera_service.update_settings(req.mode, req.exposure_time, req.analogue_gain)
+    payload = camera_service.update_settings(
+        req.mode,
+        req.exposure_time,
+        req.analogue_gain,
+        req.preview_resolution,
+        req.capture_resolution,
+    )
     return CameraSettingsResponse(**payload)
 
 

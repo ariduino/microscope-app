@@ -35,6 +35,8 @@ export async function getCameraStatus() {
       mode: "auto" | "manual";
       exposure_time: number | null;
       analogue_gain: number | null;
+      preview_resolution: string;
+      capture_resolution: string;
       live_exposure_time: number | null;
       live_analogue_gain: number | null;
       ae_enabled: boolean | null;
@@ -52,6 +54,8 @@ export async function getCameraSettings() {
     mode: "auto" | "manual";
     exposure_time: number | null;
     analogue_gain: number | null;
+    preview_resolution: string;
+    capture_resolution: string;
     live_exposure_time: number | null;
     live_analogue_gain: number | null;
     ae_enabled: boolean | null;
@@ -62,12 +66,16 @@ export async function getCameraSettings() {
 export async function updateCameraSettings(
   mode: "auto" | "manual",
   exposureTime: number | null,
-  analogueGain: number | null
+  analogueGain: number | null,
+  previewResolution: string,
+  captureResolution: string
 ) {
   return jsonFetch<{
     mode: "auto" | "manual";
     exposure_time: number | null;
     analogue_gain: number | null;
+    preview_resolution: string;
+    capture_resolution: string;
     live_exposure_time: number | null;
     live_analogue_gain: number | null;
     ae_enabled: boolean | null;
@@ -78,6 +86,8 @@ export async function updateCameraSettings(
       mode,
       exposure_time: exposureTime,
       analogue_gain: analogueGain,
+      preview_resolution: previewResolution,
+      capture_resolution: captureResolution,
     }),
   });
 }
