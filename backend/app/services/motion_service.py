@@ -21,8 +21,12 @@ class MotionService:
 
         cmd_map = {"x": "mrx", "y": "mry", "z": "mrz"}
         cmd = f"{cmd_map[axis]} {signed_steps}"
-        reply = serial_service.send_line(cmd, expect_reply=True, timeout_s=3.0)
+        reply = serial_service.send_line(cmd, expect_reply=True, timeout_s=3.0, log_io=False)
         self._refresh_position_from_serial()
+        return reply or "ok"
+
+    def release(self) -> str:
+        reply = serial_service.send_line("release", expect_reply=True, timeout_s=2.0, log_io=False)
         return reply or "ok"
 
     def position(self) -> dict[str, int]:
@@ -31,12 +35,12 @@ class MotionService:
 
     def set_rgbw(self, r: int, g: int, b: int, w: int, bri: int) -> None:
         cmd = f"led {r} {g} {b} {w} {bri}"
-        serial_service.send_line(cmd, expect_reply=True, timeout_s=2.0)
+        serial_service.send_line(cmd, expect_reply=True, timeout_s=2.0, log_io=False)
         self.last_rgbw = (r, g, b, w)
         self.last_bri = bri
 
     def _refresh_position_from_serial(self) -> None:
-        reply = serial_service.send_line("p?", expect_reply=True, timeout_s=1.5)
+        reply = serial_service.send_line("p?", expect_reply=True, timeout_s=1.5, log_io=False)
         self._parse_and_store_position(reply)
 
     def _parse_and_store_position(self, reply: str) -> None:

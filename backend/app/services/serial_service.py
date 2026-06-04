@@ -60,7 +60,7 @@ class SerialService:
             self._connected_port = None
             return False
 
-    def send_line(self, command: str, expect_reply: bool = True, timeout_s: float = 2.0) -> str:
+    def send_line(self, command: str, expect_reply: bool = True, timeout_s: float = 2.0, log_io: bool = True) -> str:
         with self._lock:
             if not self.ensure_connected():
                 raise RuntimeError("Serial controller not connected")
@@ -68,7 +68,8 @@ class SerialService:
             assert self._ser is not None
             try:
                 stripped = command.strip()
-                serial_log_service.append("tx", stripped)
+                if log_io:
+                    serial_log_service.append("tx", stripped)
                 self._ser.write((stripped + "\n").encode("utf-8"))
                 self._ser.flush()
             except Exception as exc:
@@ -94,7 +95,8 @@ class SerialService:
                 if not line:
                     continue
                 lines.append(line)
-                serial_log_service.append("rx", line)
+                if log_io:
+                    serial_log_service.append("rx", line)
 
                 low = line.lower()
                 if low in {"done", "done.", "ok"}:

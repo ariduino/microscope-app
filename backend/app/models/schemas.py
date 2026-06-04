@@ -10,13 +10,28 @@ class HealthResponse(BaseModel):
 
 class CameraCaptureRequest(BaseModel):
     project: str
-    session: str
     format: Literal["png", "jpeg"] = "png"
 
 
 class CameraCaptureResponse(BaseModel):
     image_path: str
     sidecar_path: str
+
+
+class CameraSettingsRequest(BaseModel):
+    mode: Literal["auto", "manual"]
+    exposure_time: Optional[int] = Field(default=None, ge=1)
+    analogue_gain: Optional[float] = Field(default=None, ge=1.0)
+
+
+class CameraSettingsResponse(BaseModel):
+    mode: Literal["auto", "manual"]
+    exposure_time: Optional[int]
+    analogue_gain: Optional[float]
+    live_exposure_time: Optional[int]
+    live_analogue_gain: Optional[float]
+    ae_enabled: Optional[bool]
+    last_error: Optional[str]
 
 
 class JogRequest(BaseModel):
@@ -44,7 +59,6 @@ class LightPresetRequest(BaseModel):
 class SidecarMetadata(BaseModel):
     timestamp: str
     project: str
-    session: str
     filename: str
     image_format: Literal["png", "jpeg"]
     xyz_position: dict[str, Optional[int]]

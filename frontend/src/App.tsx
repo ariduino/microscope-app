@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Camera, Command, Move3D, Sun } from "lucide-react";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -17,10 +17,12 @@ import {
   getSerialStatus,
   jog,
   reconnectSerial,
+  releaseSteppers,
   restartCamera,
   sendRaw,
   setPreset,
   setRgbw,
+  updateCameraSettings,
 } from "./lib/api";
 
 function App() {
@@ -28,6 +30,23 @@ function App() {
   const [cameraStatus, setCameraStatus] = useState<{ running: boolean; available: boolean; last_error: string | null }>({
     running: false,
     available: false,
+    last_error: null,
+  });
+  const [cameraSettings, setCameraSettings] = useState<{
+    mode: "auto" | "manual";
+    exposure_time: number | null;
+    analogue_gain: number | null;
+    live_exposure_time: number | null;
+    live_analogue_gain: number | null;
+    ae_enabled: boolean | null;
+    last_error: string | null;
+  }>({
+    mode: "auto",
+    exposure_time: 10000,
+    analogue_gain: 1.0,
+    live_exposure_time: null,
+    live_analogue_gain: null,
+    ae_enabled: null,
     last_error: null,
   });
   const [serialStatus, setSerialStatus] = useState<{ connected: boolean; port: string | null; last_error: string | null }>({
@@ -43,16 +62,15 @@ function App() {
   const [w, setW] = useState(0);
   const [brightness, setBrightness] = useState(255);
   const [project, setProject] = useState("default_project");
-  const [session, setSession] = useState("session_001");
   const [format, setFormat] = useState<"png" | "jpeg">("png");
   const [raw, setRaw] = useState("p?");
   const [log, setLog] = useState<Array<{ ts: string; dir: string; msg: string }>>([]);
   const [captureInfo, setCaptureInfo] = useState("");
   const [appError, setAppError] = useState<string | null>(null);
+  const [streamNonce, setStreamNonce] = useState(0);
   const serialPreRef = useRef<HTMLPreElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
-
-  const streamUrl = useMemo(() => "/api/v1/camera/stream", []);
+  const streamUrl = `/api/v1/camera/stream?v=${streamNonce}`;
 
   async function refreshPosition() {
     try {
@@ -75,7 +93,12 @@ function App() {
   async function refreshStatuses() {
     try {
       const cam = await getCameraStatus();
-      setCameraStatus(cam);
+      setCameraStatus({
+        running: cam.running,
+        available: cam.available,
+        last_error: cam.last_error,
+      });
+      setCameraSettings(cam.settings);
     } catch {
       // ignore
     }
@@ -165,6 +188,7 @@ function App() {
                     try {
                       await restartCamera();
                       await refreshStatuses();
+                      setStreamNonce((value) => value + 1);
                       setAppError(null);
                     } catch (error) {
                       setAppError(error instanceof Error ? error.message : "Failed to restart camera");
@@ -176,6 +200,92 @@ function App() {
                 {!cameraStatus.running && cameraStatus.last_error ? (
                   <span className="text-xs text-amber-300">{cameraStatus.last_error}</span>
                 ) : null}
+              </div>
+              <Separator />
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label htmlFor="camera-mode">Camera Mode</Label>
+                  <Select
+                    value={cameraSettings.mode}
+                    onValueChange={async (value) => {
+                      const mode = value as "auto" | "manual";
+                      try {
+                        const settings = await updateCameraSettings(mode, cameraSettings.exposure_time, cameraSettings.analogue_gain);
+                        setCameraSettings(settings);
+                        setAppError(null);
+                      } catch (error) {
+                        setAppError(error instanceof Error ? error.message : "Failed to update camera mode");
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="camera-mode">
+                      <SelectValue placeholder="Select camera mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto</SelectItem>
+                      <SelectItem value="manual">Manual</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="exposure-time">Exposure Time (us)</Label>
+                    <Input
+                      id="exposure-time"
+                      type="number"
+                      min={1}
+                      value={cameraSettings.exposure_time ?? ""}
+                      disabled={cameraSettings.mode !== "manual"}
+                      onChange={(e) =>
+                        setCameraSettings((current) => ({
+                          ...current,
+                          exposure_time: e.target.value ? Number(e.target.value) : null,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="analogue-gain">Analogue Gain</Label>
+                    <Input
+                      id="analogue-gain"
+                      type="number"
+                      min={1}
+                      step="0.1"
+                      value={cameraSettings.analogue_gain ?? ""}
+                      disabled={cameraSettings.mode !== "manual"}
+                      onChange={(e) =>
+                        setCameraSettings((current) => ({
+                          ...current,
+                          analogue_gain: e.target.value ? Number(e.target.value) : null,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const settings = await updateCameraSettings(
+                        cameraSettings.mode,
+                        cameraSettings.exposure_time,
+                        cameraSettings.analogue_gain
+                      );
+                      setCameraSettings(settings);
+                      setAppError(null);
+                    } catch (error) {
+                      setAppError(error instanceof Error ? error.message : "Failed to apply camera settings");
+                    }
+                  }}
+                >
+                  Apply Camera Settings
+                </Button>
+                <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                  <p>Live Exposure: {cameraSettings.live_exposure_time ?? "n/a"} us</p>
+                  <p>Live Gain: {cameraSettings.live_analogue_gain ?? "n/a"}</p>
+                  <p>AE Enabled: {cameraSettings.ae_enabled == null ? "n/a" : cameraSettings.ae_enabled ? "yes" : "no"}</p>
+                  <p>Mode Used: {cameraSettings.mode}</p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -246,6 +356,20 @@ function App() {
                 }}>X-</Button>
               </div>
               <Separator />
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    await releaseSteppers();
+                    setAppError(null);
+                  } catch (error) {
+                    setAppError(error instanceof Error ? error.message : "Failed to release steppers");
+                  }
+                }}
+              >
+                Release Steppers
+              </Button>
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <Badge className="border-border bg-muted/40">X {position.x}</Badge>
                 <Badge className="border-border bg-muted/40">Y {position.y}</Badge>
@@ -338,16 +462,12 @@ function App() {
               <CardTitle>Capture</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3">
                 <div className="space-y-1">
                   <Label htmlFor="project">Project</Label>
                   <Input id="project" value={project} onChange={(e) => setProject(e.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="session">Session</Label>
-                  <Input id="session" value={session} onChange={(e) => setSession(e.target.value)} />
-                </div>
-                <div className="space-y-1 md:col-span-2">
                   <Label htmlFor="format">Format</Label>
                   <Select value={format} onValueChange={(v) => setFormat(v as "png" | "jpeg")}>
                     <SelectTrigger id="format">
@@ -364,7 +484,7 @@ function App() {
                 className="w-full"
                 onClick={async () => {
                   try {
-                    const out = await capture(project, session, format);
+                    const out = await capture(project, format);
                     setCaptureInfo(`${out.image_path} | ${out.sidecar_path}`);
                     setAppError(null);
                   } catch (error) {

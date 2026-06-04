@@ -27,11 +27,59 @@ export async function getHealth() {
 }
 
 export async function getCameraStatus() {
-  return jsonFetch<{ running: boolean; available: boolean; last_error: string | null }>("/camera/status");
+  return jsonFetch<{
+    running: boolean;
+    available: boolean;
+    last_error: string | null;
+    settings: {
+      mode: "auto" | "manual";
+      exposure_time: number | null;
+      analogue_gain: number | null;
+      live_exposure_time: number | null;
+      live_analogue_gain: number | null;
+      ae_enabled: boolean | null;
+      last_error: string | null;
+    };
+  }>("/camera/status");
 }
 
 export async function restartCamera() {
   return jsonFetch<{ status: string }>("/camera/restart", { method: "POST" });
+}
+
+export async function getCameraSettings() {
+  return jsonFetch<{
+    mode: "auto" | "manual";
+    exposure_time: number | null;
+    analogue_gain: number | null;
+    live_exposure_time: number | null;
+    live_analogue_gain: number | null;
+    ae_enabled: boolean | null;
+    last_error: string | null;
+  }>("/camera/settings");
+}
+
+export async function updateCameraSettings(
+  mode: "auto" | "manual",
+  exposureTime: number | null,
+  analogueGain: number | null
+) {
+  return jsonFetch<{
+    mode: "auto" | "manual";
+    exposure_time: number | null;
+    analogue_gain: number | null;
+    live_exposure_time: number | null;
+    live_analogue_gain: number | null;
+    ae_enabled: boolean | null;
+    last_error: string | null;
+  }>("/camera/settings", {
+    method: "POST",
+    body: JSON.stringify({
+      mode,
+      exposure_time: exposureTime,
+      analogue_gain: analogueGain,
+    }),
+  });
 }
 
 export async function getPosition() {
@@ -42,6 +90,12 @@ export async function jog(axis: "x" | "y" | "z", direction: "positive" | "negati
   return jsonFetch<{ status: string }>("/motion/jog", {
     method: "POST",
     body: JSON.stringify({ axis, direction, steps }),
+  });
+}
+
+export async function releaseSteppers() {
+  return jsonFetch<{ status: string }>("/motion/release", {
+    method: "POST",
   });
 }
 
@@ -66,10 +120,10 @@ export async function setPreset(preset: "white_full" | "off") {
   });
 }
 
-export async function capture(project: string, session: string, format: "png" | "jpeg") {
+export async function capture(project: string, format: "png" | "jpeg") {
   return jsonFetch<{ image_path: string; sidecar_path: string }>("/camera/capture", {
     method: "POST",
-    body: JSON.stringify({ project, session, format }),
+    body: JSON.stringify({ project, format }),
   });
 }
 

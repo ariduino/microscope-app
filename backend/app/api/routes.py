@@ -4,6 +4,8 @@ from fastapi.responses import StreamingResponse
 from app.models.schemas import (
     CameraCaptureRequest,
     CameraCaptureResponse,
+    CameraSettingsRequest,
+    CameraSettingsResponse,
     HealthResponse,
     JogRequest,
     LightPresetRequest,
@@ -46,6 +48,18 @@ def camera_status() -> dict[str, object]:
     return camera_service.status()
 
 
+@router.get("/camera/settings", response_model=CameraSettingsResponse)
+def camera_settings() -> CameraSettingsResponse:
+    payload = camera_service.status()["settings"]
+    return CameraSettingsResponse(**payload)
+
+
+@router.post("/camera/settings", response_model=CameraSettingsResponse)
+def camera_update_settings(req: CameraSettingsRequest) -> CameraSettingsResponse:
+    payload = camera_service.update_settings(req.mode, req.exposure_time, req.analogue_gain)
+    return CameraSettingsResponse(**payload)
+
+
 @router.get("/camera/stream")
 def camera_stream() -> StreamingResponse:
     return StreamingResponse(
@@ -63,6 +77,15 @@ def camera_capture(req: CameraCaptureRequest) -> CameraCaptureResponse:
 def motion_jog(req: JogRequest) -> dict[str, str]:
     try:
         motion_service.jog(req.axis, req.direction, req.steps)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return {"status": "ok"}
+
+
+@router.post("/motion/release")
+def motion_release() -> dict[str, str]:
+    try:
+        motion_service.release()
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     return {"status": "ok"}
