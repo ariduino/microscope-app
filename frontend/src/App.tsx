@@ -55,12 +55,14 @@ function App() {
   });
   const [cameraExposureDraft, setCameraExposureDraft] = useState("10000");
   const [cameraGainDraft, setCameraGainDraft] = useState("1.0");
+  const [previewResolutionDraft, setPreviewResolutionDraft] = useState("1920x1080");
+  const [captureResolutionDraft, setCaptureResolutionDraft] = useState("3280x2464");
   const [serialStatus, setSerialStatus] = useState<{ connected: boolean; port: string | null; last_error: string | null }>({
     connected: false,
     port: null,
     last_error: null,
   });
-  const [steps, setSteps] = useState(100);
+  const [stepsDraft, setStepsDraft] = useState("100");
   const [position, setPosition] = useState({ x: 0, y: 0, z: 0 });
   const [r, setR] = useState(0);
   const [g, setG] = useState(0);
@@ -111,6 +113,8 @@ function App() {
       if (!cameraSettingsDirtyRef.current) {
         setCameraExposureDraft(cam.settings.exposure_time == null ? "" : String(cam.settings.exposure_time));
         setCameraGainDraft(cam.settings.analogue_gain == null ? "" : String(cam.settings.analogue_gain));
+        setPreviewResolutionDraft(cam.settings.preview_resolution);
+        setCaptureResolutionDraft(cam.settings.capture_resolution);
       }
     } catch {
       // ignore
@@ -155,6 +159,14 @@ function App() {
     if (!shouldAutoScrollRef.current) return;
     el.scrollTop = el.scrollHeight;
   }, [log]);
+
+  function getStepSize(): number | null {
+    const trimmed = stepsDraft.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    if (Number.isNaN(parsed) || parsed < 1) return null;
+    return parsed;
+  }
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -229,12 +241,14 @@ function App() {
                           mode,
                           exposureTime,
                           analogueGain,
-                          cameraSettings.preview_resolution,
-                          cameraSettings.capture_resolution
+                          previewResolutionDraft,
+                          captureResolutionDraft
                         );
                         setCameraSettings(settings);
                         setCameraExposureDraft(settings.exposure_time == null ? "" : String(settings.exposure_time));
                         setCameraGainDraft(settings.analogue_gain == null ? "" : String(settings.analogue_gain));
+                        setPreviewResolutionDraft(settings.preview_resolution);
+                        setCaptureResolutionDraft(settings.capture_resolution);
                         cameraSettingsDirtyRef.current = false;
                         setStreamNonce((current) => current + 1);
                         setAppError(null);
@@ -285,13 +299,11 @@ function App() {
                   <div className="space-y-1">
                     <Label htmlFor="preview-resolution">Preview Resolution</Label>
                     <Select
-                      value={cameraSettings.preview_resolution}
-                      onValueChange={(value) =>
-                        setCameraSettings((current) => ({
-                          ...current,
-                          preview_resolution: value,
-                        }))
-                      }
+                      value={previewResolutionDraft}
+                      onValueChange={(value) => {
+                        setPreviewResolutionDraft(value);
+                        cameraSettingsDirtyRef.current = true;
+                      }}
                     >
                       <SelectTrigger id="preview-resolution">
                         <SelectValue placeholder="Select preview resolution" />
@@ -308,13 +320,11 @@ function App() {
                   <div className="space-y-1">
                     <Label htmlFor="capture-resolution">Capture Resolution</Label>
                     <Select
-                      value={cameraSettings.capture_resolution}
-                      onValueChange={(value) =>
-                        setCameraSettings((current) => ({
-                          ...current,
-                          capture_resolution: value,
-                        }))
-                      }
+                      value={captureResolutionDraft}
+                      onValueChange={(value) => {
+                        setCaptureResolutionDraft(value);
+                        cameraSettingsDirtyRef.current = true;
+                      }}
                     >
                       <SelectTrigger id="capture-resolution">
                         <SelectValue placeholder="Select capture resolution" />
@@ -339,12 +349,14 @@ function App() {
                         cameraSettings.mode,
                         exposureTime,
                         analogueGain,
-                        cameraSettings.preview_resolution,
-                        cameraSettings.capture_resolution
+                        previewResolutionDraft,
+                        captureResolutionDraft
                       );
                       setCameraSettings(settings);
                       setCameraExposureDraft(settings.exposure_time == null ? "" : String(settings.exposure_time));
                       setCameraGainDraft(settings.analogue_gain == null ? "" : String(settings.analogue_gain));
+                      setPreviewResolutionDraft(settings.preview_resolution);
+                      setCaptureResolutionDraft(settings.capture_resolution);
                       cameraSettingsDirtyRef.current = false;
                       setStreamNonce((current) => current + 1);
                       setAppError(null);
@@ -374,10 +386,15 @@ function App() {
             <CardContent className="space-y-3">
               <div className="space-y-1">
                 <Label htmlFor="steps">Step Size (motor steps)</Label>
-                <Input id="steps" type="number" min={1} max={20000} value={steps} onChange={(e) => setSteps(Number(e.target.value))} />
+                <Input id="steps" type="number" min={1} max={20000} value={stepsDraft} onChange={(e) => setStepsDraft(e.target.value)} />
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <Button variant="secondary" onClick={async () => {
+                  const steps = getStepSize();
+                  if (steps == null) {
+                    setAppError("Enter a step size greater than 0");
+                    return;
+                  }
                   try {
                     await jog("y", "positive", steps);
                     await refreshPosition();
@@ -387,6 +404,11 @@ function App() {
                   }
                 }}>Y+</Button>
                 <Button variant="secondary" onClick={async () => {
+                  const steps = getStepSize();
+                  if (steps == null) {
+                    setAppError("Enter a step size greater than 0");
+                    return;
+                  }
                   try {
                     await jog("z", "positive", steps);
                     await refreshPosition();
@@ -396,6 +418,11 @@ function App() {
                   }
                 }}>Z+</Button>
                 <Button variant="secondary" onClick={async () => {
+                  const steps = getStepSize();
+                  if (steps == null) {
+                    setAppError("Enter a step size greater than 0");
+                    return;
+                  }
                   try {
                     await jog("x", "positive", steps);
                     await refreshPosition();
@@ -405,6 +432,11 @@ function App() {
                   }
                 }}>X+</Button>
                 <Button variant="outline" onClick={async () => {
+                  const steps = getStepSize();
+                  if (steps == null) {
+                    setAppError("Enter a step size greater than 0");
+                    return;
+                  }
                   try {
                     await jog("y", "negative", steps);
                     await refreshPosition();
@@ -414,6 +446,11 @@ function App() {
                   }
                 }}>Y-</Button>
                 <Button variant="outline" onClick={async () => {
+                  const steps = getStepSize();
+                  if (steps == null) {
+                    setAppError("Enter a step size greater than 0");
+                    return;
+                  }
                   try {
                     await jog("z", "negative", steps);
                     await refreshPosition();
@@ -423,6 +460,11 @@ function App() {
                   }
                 }}>Z-</Button>
                 <Button variant="outline" onClick={async () => {
+                  const steps = getStepSize();
+                  if (steps == null) {
+                    setAppError("Enter a step size greater than 0");
+                    return;
+                  }
                   try {
                     await jog("x", "negative", steps);
                     await refreshPosition();

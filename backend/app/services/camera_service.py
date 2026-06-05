@@ -63,7 +63,7 @@ class CameraService:
             try:
                 self._output = _StreamingOutput()
                 self._camera = Picamera2()
-                config = self._camera.create_video_configuration(main={"size": self._parse_resolution(self._preview_resolution)})
+                config = self._create_preview_configuration(self._camera)
                 self._camera.configure(config)
                 self._apply_settings_locked()
                 self._camera.start_recording(JpegEncoder(), FileOutput(self._output))
@@ -169,12 +169,7 @@ class CameraService:
             sidecar_path = image_path.with_suffix(".json")
 
             if self._camera is not None and self.running:
-                capture_config = self._camera.create_still_configuration(
-                    main={"size": self._parse_resolution(self._capture_resolution)}
-                )
-                self._apply_settings_locked()
-                self._camera.switch_mode_and_capture_file(capture_config, str(image_path), format=req.format)
-                self._refresh_live_settings_locked()
+                self._capture_file_locked(str(image_path), req.format)
                 camera_settings = {
                     "status": "captured",
                     "mode": "picamera2",
@@ -253,7 +248,7 @@ class CameraService:
         try:
             self._output = _StreamingOutput()
             self._camera = Picamera2()
-            config = self._camera.create_video_configuration(main={"size": self._parse_resolution(self._preview_resolution)})
+            config = self._create_preview_configuration(self._camera)
             self._camera.configure(config)
             self._apply_settings_locked()
             self._camera.start_recording(JpegEncoder(), FileOutput(self._output))
@@ -279,6 +274,41 @@ class CameraService:
                     "AnalogueGain": float(self._manual_analogue_gain),
                 }
             )
+
+    def _create_preview_configuration(self, camera: Picamera2) -> object:
+        return camera.create_video_configuration(
+            main={
+                "size": self._parse_resolution(self._preview_resolution),
+                "format": "RGB888",
+            }
+        )
+
+    def _capture_file_locked(self, path: str, fmt: str) -> None:
+        if self._camera is None:
+            raise RuntimeError("Camera is not running")
+
+        try:
+            self._camera.stop_recording()
+        except Exception:
+            pass
+
+        try:
+            still_config = self._camera.create_still_configuration(
+                main={"size": self._parse_resolution(self._capture_resolution)}
+            )
+            self._apply_settings_locked()
+            self._camera.switch_mode_and_capture_file(still_config, path, format=fmt)
+            preview_config = self._create_preview_configuration(self._camera)
+            self._camera.configure(preview_config)
+            self._apply_settings_locked()
+            self._output = _StreamingOutput()
+            self._camera.start_recording(JpegEncoder(), FileOutput(self._output))
+            self._refresh_live_settings_locked()
+        except Exception as exc:
+            self._last_error = f"Failed to capture image: {exc}"
+            self.running = False
+            self._close_camera()
+            raise
 
     def _refresh_live_settings_locked(self) -> None:
         if self._camera is None or not self.running:
