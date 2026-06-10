@@ -28,6 +28,16 @@ cleanup() {
 
 trap cleanup EXIT
 
+open_browser() {
+  if command -v chromium-browser >/dev/null 2>&1; then
+    setsid -f chromium-browser --new-window "$APP_URL" >/dev/null 2>&1 || true
+  elif command -v chromium >/dev/null 2>&1; then
+    setsid -f chromium --new-window "$APP_URL" >/dev/null 2>&1 || true
+  else
+    setsid -f xdg-open "$APP_URL" >/dev/null 2>&1 || true
+  fi
+}
+
 mkdir -p "$RUNTIME_DIR"
 
 if [ ! -d "$BACKEND_DIR" ] || [ ! -d "$FRONTEND_DIR" ]; then
@@ -82,17 +92,18 @@ if [ "$READY" -ne 1 ]; then
   exit 1
 fi
 
-echo "Opening Chromium..."
-if command -v chromium-browser >/dev/null 2>&1; then
-  chromium-browser --new-window "$APP_URL" >/dev/null 2>&1 &
-elif command -v chromium >/dev/null 2>&1; then
-  chromium --new-window "$APP_URL" >/dev/null 2>&1 &
-else
-  xdg-open "$APP_URL" >/dev/null 2>&1 &
+sleep 1
+if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+  echo "Backend exited unexpectedly after reporting healthy."
+  echo "Check log: $BACKEND_LOG"
+  exit 1
 fi
+
+echo "Opening Chromium..."
+open_browser
 
 echo "Microscope app launched at $APP_URL"
 echo "Backend log: $BACKEND_LOG"
 echo
-echo "You can close this launcher window now."
-sleep 3
+echo "This launcher window will close in 8 seconds."
+sleep 8
