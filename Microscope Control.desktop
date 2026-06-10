@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Microscope Control
+Comment=Launch the microscope control app in Chromium
+Exec=/bin/bash -lc 'cd "$(dirname "$0")" && ./launch_app.sh' %k
+Path=
+Terminal=false
+Categories=Science;
