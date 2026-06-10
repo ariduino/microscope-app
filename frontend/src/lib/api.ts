@@ -130,10 +130,10 @@ export async function setPreset(preset: "white_full" | "off") {
   });
 }
 
-export async function capture(project: string, format: "png" | "jpeg") {
+export async function capture(project: string, label: string, format: "png" | "jpeg") {
   return jsonFetch<{ image_path: string; sidecar_path: string }>("/camera/capture", {
     method: "POST",
-    body: JSON.stringify({ project, format }),
+    body: JSON.stringify({ project, label: label.trim() || null, format }),
   });
 }
 

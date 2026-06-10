@@ -10,6 +10,7 @@ class HealthResponse(BaseModel):
 
 class CameraCaptureRequest(BaseModel):
     project: str
+    label: Optional[str] = None
     format: Literal["png", "jpeg"] = "png"
 
 
@@ -63,6 +64,7 @@ class LightPresetRequest(BaseModel):
 class SidecarMetadata(BaseModel):
     timestamp: str
     project: str
+    label: Optional[str]
     filename: str
     image_format: Literal["png", "jpeg"]
     xyz_position: dict[str, Optional[int]]

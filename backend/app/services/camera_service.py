@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import threading
 import time
 from datetime import datetime
@@ -163,8 +164,11 @@ class CameraService:
             capture_dir = settings.capture_root / req.project
             capture_dir.mkdir(parents=True, exist_ok=True)
 
-            index = self._next_index(capture_dir, req.project, req.format)
-            filename = f"{req.project}-{index:03d}.{req.format}"
+            safe_project = self._sanitize_filename_part(req.project)
+            safe_label = self._sanitize_filename_part(req.label) if req.label else None
+            name_prefix = f"{safe_project}-{safe_label}" if safe_label else safe_project
+            index = self._next_index(capture_dir, name_prefix, req.format)
+            filename = f"{name_prefix}-{index:03d}.{req.format}"
             image_path = capture_dir / filename
             sidecar_path = image_path.with_suffix(".json")
 
@@ -203,6 +207,7 @@ class CameraService:
             metadata = SidecarMetadata(
                 timestamp=now.isoformat(),
                 project=req.project,
+                label=req.label,
                 filename=filename,
                 image_format=req.format,
                 xyz_position=motion_service.position(),
@@ -298,6 +303,10 @@ class CameraService:
             )
             self._apply_settings_locked()
             self._camera.switch_mode_and_capture_file(still_config, path, format=fmt)
+            try:
+                self._camera.stop()
+            except Exception:
+                pass
             preview_config = self._create_preview_configuration(self._camera)
             self._camera.configure(preview_config)
             self._apply_settings_locked()
@@ -358,8 +367,14 @@ class CameraService:
         width_str, height_str = value.lower().split("x", 1)
         return int(width_str), int(height_str)
 
-    def _next_index(self, directory: Path, project: str, fmt: str) -> int:
-        prefix = f"{project}-"
+    @staticmethod
+    def _sanitize_filename_part(value: str) -> str:
+        normalized = re.sub(r"[^A-Za-z0-9_-]+", "-", value.strip())
+        normalized = re.sub(r"-{2,}", "-", normalized).strip("-_")
+        return normalized or "capture"
+
+    def _next_index(self, directory: Path, name_prefix: str, fmt: str) -> int:
+        prefix = f"{name_prefix}-"
         suffix = f".{fmt}"
         matches = [p for p in directory.iterdir() if p.is_file() and p.name.startswith(prefix) and p.name.endswith(suffix)]
         return len(matches) + 1

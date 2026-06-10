@@ -70,6 +70,7 @@ function App() {
   const [w, setW] = useState(0);
   const [brightness, setBrightness] = useState(255);
   const [project, setProject] = useState("default_project");
+  const [captureLabel, setCaptureLabel] = useState("");
   const [format, setFormat] = useState<"png" | "jpeg">("png");
   const [raw, setRaw] = useState("p?");
   const [log, setLog] = useState<Array<{ ts: string; dir: string; msg: string }>>([]);
@@ -587,6 +588,15 @@ function App() {
                   <Input id="project" value={project} onChange={(e) => setProject(e.target.value)} />
                 </div>
                 <div className="space-y-1">
+                  <Label htmlFor="capture-label">Optional File Label</Label>
+                  <Input
+                    id="capture-label"
+                    value={captureLabel}
+                    onChange={(e) => setCaptureLabel(e.target.value)}
+                    placeholder="for example: leaf, pollen, slide-a"
+                  />
+                </div>
+                <div className="space-y-1">
                   <Label htmlFor="format">Format</Label>
                   <Select value={format} onValueChange={(v) => setFormat(v as "png" | "jpeg")}>
                     <SelectTrigger id="format">
@@ -603,7 +613,7 @@ function App() {
                 className="w-full"
                 onClick={async () => {
                   try {
-                    const out = await capture(project, format);
+                    const out = await capture(project, captureLabel, format);
                     setCaptureInfo(`${out.image_path} | ${out.sidecar_path}`);
                     setAppError(null);
                   } catch (error) {
