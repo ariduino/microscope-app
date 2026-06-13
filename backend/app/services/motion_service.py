@@ -17,6 +17,8 @@ class MotionService:
 
     def jog(self, axis: str, direction: str, steps: int) -> str:
         sign = 1 if direction == "positive" else -1
+        if axis == "x":
+            sign *= -1
         signed_steps = sign * steps
 
         cmd_map = {"x": "mrx", "y": "mry", "z": "mrz"}

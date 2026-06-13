@@ -57,12 +57,33 @@ def camera_settings() -> CameraSettingsResponse:
 @router.post("/camera/settings", response_model=CameraSettingsResponse)
 def camera_update_settings(req: CameraSettingsRequest) -> CameraSettingsResponse:
     payload = camera_service.update_settings(
-        req.mode,
+        req.ae_mode,
+        req.awb_mode,
         req.exposure_time,
         req.analogue_gain,
+        req.red_gain,
+        req.blue_gain,
         req.preview_resolution,
         req.capture_resolution,
     )
+    return CameraSettingsResponse(**payload)
+
+
+@router.post("/camera/lock")
+def camera_lock() -> CameraSettingsResponse:
+    try:
+        payload = camera_service.lock_current_settings()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return CameraSettingsResponse(**payload)
+
+
+@router.post("/camera/calibrate-white-balance")
+def camera_calibrate_white_balance() -> CameraSettingsResponse:
+    try:
+        payload = camera_service.calibrate_white_balance_from_blank_field()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     return CameraSettingsResponse(**payload)
 
 

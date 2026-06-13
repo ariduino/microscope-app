@@ -32,14 +32,20 @@ export async function getCameraStatus() {
     available: boolean;
     last_error: string | null;
     settings: {
-      mode: "auto" | "manual";
+      ae_mode: "auto" | "manual";
+      awb_mode: "auto" | "manual";
       exposure_time: number | null;
       analogue_gain: number | null;
+      red_gain: number | null;
+      blue_gain: number | null;
       preview_resolution: string;
       capture_resolution: string;
       live_exposure_time: number | null;
       live_analogue_gain: number | null;
       ae_enabled: boolean | null;
+      live_red_gain: number | null;
+      live_blue_gain: number | null;
+      awb_enabled: boolean | null;
       last_error: string | null;
     };
   }>("/camera/status");
@@ -51,44 +57,106 @@ export async function restartCamera() {
 
 export async function getCameraSettings() {
   return jsonFetch<{
-    mode: "auto" | "manual";
+    ae_mode: "auto" | "manual";
+    awb_mode: "auto" | "manual";
     exposure_time: number | null;
     analogue_gain: number | null;
+    red_gain: number | null;
+    blue_gain: number | null;
     preview_resolution: string;
     capture_resolution: string;
     live_exposure_time: number | null;
     live_analogue_gain: number | null;
     ae_enabled: boolean | null;
+    live_red_gain: number | null;
+    live_blue_gain: number | null;
+    awb_enabled: boolean | null;
     last_error: string | null;
   }>("/camera/settings");
 }
 
 export async function updateCameraSettings(
-  mode: "auto" | "manual",
+  aeMode: "auto" | "manual",
+  awbMode: "auto" | "manual",
   exposureTime: number | null,
   analogueGain: number | null,
+  redGain: number | null,
+  blueGain: number | null,
   previewResolution: string,
   captureResolution: string
 ) {
   return jsonFetch<{
-    mode: "auto" | "manual";
+    ae_mode: "auto" | "manual";
+    awb_mode: "auto" | "manual";
     exposure_time: number | null;
     analogue_gain: number | null;
+    red_gain: number | null;
+    blue_gain: number | null;
     preview_resolution: string;
     capture_resolution: string;
     live_exposure_time: number | null;
     live_analogue_gain: number | null;
     ae_enabled: boolean | null;
+    live_red_gain: number | null;
+    live_blue_gain: number | null;
+    awb_enabled: boolean | null;
     last_error: string | null;
   }>("/camera/settings", {
     method: "POST",
     body: JSON.stringify({
-      mode,
+      ae_mode: aeMode,
+      awb_mode: awbMode,
       exposure_time: exposureTime,
       analogue_gain: analogueGain,
+      red_gain: redGain,
+      blue_gain: blueGain,
       preview_resolution: previewResolution,
       capture_resolution: captureResolution,
     }),
+  });
+}
+
+export async function lockCurrentCameraSettings() {
+  return jsonFetch<{
+    ae_mode: "auto" | "manual";
+    awb_mode: "auto" | "manual";
+    exposure_time: number | null;
+    analogue_gain: number | null;
+    red_gain: number | null;
+    blue_gain: number | null;
+    preview_resolution: string;
+    capture_resolution: string;
+    live_exposure_time: number | null;
+    live_analogue_gain: number | null;
+    ae_enabled: boolean | null;
+    live_red_gain: number | null;
+    live_blue_gain: number | null;
+    awb_enabled: boolean | null;
+    last_error: string | null;
+  }>("/camera/lock", {
+    method: "POST",
+  });
+}
+
+export async function calibrateWhiteBalanceFromBlankField() {
+  return jsonFetch<{
+    ae_mode: "auto" | "manual";
+    awb_mode: "auto" | "manual";
+    exposure_time: number | null;
+    analogue_gain: number | null;
+    red_gain: number | null;
+    blue_gain: number | null;
+    preview_resolution: string;
+    capture_resolution: string;
+    live_exposure_time: number | null;
+    live_analogue_gain: number | null;
+    ae_enabled: boolean | null;
+    live_red_gain: number | null;
+    live_blue_gain: number | null;
+    awb_enabled: boolean | null;
+    last_error: string | null;
+  }>("/camera/calibrate-white-balance", {
+    method: "POST",
   });
 }
 

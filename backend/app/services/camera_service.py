@@ -42,14 +42,20 @@ class CameraService:
         self._output = _StreamingOutput()
         self._lock = threading.Lock()
         self._last_error: Optional[str] = None
-        self._mode: str = "auto"
+        self._ae_mode: str = "auto"
+        self._awb_mode: str = "auto"
         self._manual_exposure_time: int = 10000
         self._manual_analogue_gain: float = 1.0
+        self._manual_red_gain: float = 1.0
+        self._manual_blue_gain: float = 1.0
         self._preview_resolution: str = "1920x1080"
         self._capture_resolution: str = "3280x2464"
         self._live_exposure_time: Optional[int] = None
         self._live_analogue_gain: Optional[float] = None
+        self._live_red_gain: Optional[float] = None
+        self._live_blue_gain: Optional[float] = None
         self._live_ae_enabled: Optional[bool] = None
+        self._live_awb_enabled: Optional[bool] = None
 
     def start(self) -> None:
         with self._lock:
@@ -91,37 +97,36 @@ class CameraService:
         with self._lock:
             if self.running:
                 self._refresh_live_settings_locked()
-        return {
-            "running": self.running,
-            "available": Picamera2 is not None,
-            "last_error": self._last_error,
-            "settings": {
-                "mode": self._mode,
-                "exposure_time": self._manual_exposure_time,
-                "analogue_gain": self._manual_analogue_gain,
-                "preview_resolution": self._preview_resolution,
-                "capture_resolution": self._capture_resolution,
-                "live_exposure_time": self._live_exposure_time,
-                "live_analogue_gain": self._live_analogue_gain,
-                "ae_enabled": self._live_ae_enabled,
-            },
-        }
+            return {
+                "running": self.running,
+                "available": Picamera2 is not None,
+                "last_error": self._last_error,
+                "settings": self._settings_payload(),
+            }
 
     def update_settings(
         self,
-        mode: str,
+        ae_mode: str,
+        awb_mode: str,
         exposure_time: Optional[int],
         analogue_gain: Optional[float],
+        red_gain: Optional[float],
+        blue_gain: Optional[float],
         preview_resolution: Optional[str],
         capture_resolution: Optional[str],
     ) -> dict[str, object]:
         with self._lock:
             preview_changed = preview_resolution is not None and preview_resolution != self._preview_resolution
-            self._mode = mode
+            self._ae_mode = ae_mode
+            self._awb_mode = awb_mode
             if exposure_time is not None:
                 self._manual_exposure_time = exposure_time
             if analogue_gain is not None:
                 self._manual_analogue_gain = analogue_gain
+            if red_gain is not None:
+                self._manual_red_gain = red_gain
+            if blue_gain is not None:
+                self._manual_blue_gain = blue_gain
             if preview_resolution is not None:
                 self._preview_resolution = preview_resolution
             if capture_resolution is not None:
@@ -134,6 +139,52 @@ class CameraService:
                     self._apply_settings_locked()
                     self._refresh_live_settings_locked()
 
+            return self._settings_payload()
+
+    def lock_current_settings(self) -> dict[str, object]:
+        with self._lock:
+            if not self.running:
+                self.start()
+            if not self.running or self._camera is None:
+                raise RuntimeError(self._last_error or "Camera is not running")
+
+            self._refresh_live_settings_locked()
+            if self._live_exposure_time is not None:
+                self._manual_exposure_time = self._live_exposure_time
+            if self._live_analogue_gain is not None:
+                self._manual_analogue_gain = self._live_analogue_gain
+            if self._live_red_gain is not None:
+                self._manual_red_gain = self._live_red_gain
+            if self._live_blue_gain is not None:
+                self._manual_blue_gain = self._live_blue_gain
+
+            self._ae_mode = "manual"
+            self._awb_mode = "manual"
+            self._apply_settings_locked()
+            self._refresh_live_settings_locked()
+            return self._settings_payload()
+
+    def calibrate_white_balance_from_blank_field(self) -> dict[str, object]:
+        with self._lock:
+            if not self.running:
+                self.start()
+            if not self.running or self._camera is None:
+                raise RuntimeError(self._last_error or "Camera is not running")
+
+            rgb_means = self._measure_center_rgb_locked()
+            red, green, blue = rgb_means
+            if red <= 0 or blue <= 0 or green <= 0:
+                raise RuntimeError("Blank-field calibration could not measure valid RGB values")
+
+            target = green
+            new_red_gain = max(0.1, min(32.0, self._manual_red_gain * (target / red)))
+            new_blue_gain = max(0.1, min(32.0, self._manual_blue_gain * (target / blue)))
+
+            self._manual_red_gain = new_red_gain
+            self._manual_blue_gain = new_blue_gain
+            self._awb_mode = "manual"
+            self._apply_settings_locked()
+            self._refresh_live_settings_locked()
             return self._settings_payload()
 
     def mjpeg_stream(self) -> Iterator[bytes]:
@@ -174,35 +225,10 @@ class CameraService:
 
             if self._camera is not None and self.running:
                 self._capture_file_locked(str(image_path), req.format)
-                camera_settings = {
-                    "status": "captured",
-                    "mode": "picamera2",
-                    "last_error": self._last_error,
-                    "camera_mode": self._mode,
-                    "preview_resolution": self._preview_resolution,
-                    "capture_resolution": self._capture_resolution,
-                    "requested_exposure_time": self._manual_exposure_time if self._mode == "manual" else None,
-                    "requested_analogue_gain": self._manual_analogue_gain if self._mode == "manual" else None,
-                    "ae_enabled": self._live_ae_enabled,
-                    "exposure_time": self._live_exposure_time,
-                    "analogue_gain": self._live_analogue_gain,
-                }
+                camera_settings = self._camera_settings_for_sidecar(status="captured", mode="picamera2")
             else:
-                # Fallback so filesystem flow is testable off-device.
                 image_path.write_bytes(b"")
-                camera_settings = {
-                    "status": "stub_capture",
-                    "mode": "stub",
-                    "last_error": self._last_error,
-                    "camera_mode": self._mode,
-                    "preview_resolution": self._preview_resolution,
-                    "capture_resolution": self._capture_resolution,
-                    "requested_exposure_time": self._manual_exposure_time if self._mode == "manual" else None,
-                    "requested_analogue_gain": self._manual_analogue_gain if self._mode == "manual" else None,
-                    "ae_enabled": self._live_ae_enabled,
-                    "exposure_time": self._live_exposure_time,
-                    "analogue_gain": self._live_analogue_gain,
-                }
+                camera_settings = self._camera_settings_for_sidecar(status="stub_capture", mode="stub")
 
             metadata = SidecarMetadata(
                 timestamp=now.isoformat(),
@@ -223,6 +249,27 @@ class CameraService:
             sidecar_path.write_text(json.dumps(metadata.model_dump(), indent=2), encoding="utf-8")
 
             return CameraCaptureResponse(image_path=str(image_path), sidecar_path=str(sidecar_path))
+
+    def _camera_settings_for_sidecar(self, status: str, mode: str) -> dict[str, object]:
+        return {
+            "status": status,
+            "mode": mode,
+            "last_error": self._last_error,
+            "ae_mode": self._ae_mode,
+            "awb_mode": self._awb_mode,
+            "preview_resolution": self._preview_resolution,
+            "capture_resolution": self._capture_resolution,
+            "requested_exposure_time": self._manual_exposure_time if self._ae_mode == "manual" else None,
+            "requested_analogue_gain": self._manual_analogue_gain if self._ae_mode == "manual" else None,
+            "requested_red_gain": self._manual_red_gain if self._awb_mode == "manual" else None,
+            "requested_blue_gain": self._manual_blue_gain if self._awb_mode == "manual" else None,
+            "ae_enabled": self._live_ae_enabled,
+            "awb_enabled": self._live_awb_enabled,
+            "exposure_time": self._live_exposure_time,
+            "analogue_gain": self._live_analogue_gain,
+            "red_gain": self._live_red_gain,
+            "blue_gain": self._live_blue_gain,
+        }
 
     def _close_camera(self) -> None:
         camera = self._camera
@@ -269,16 +316,13 @@ class CameraService:
         if self._camera is None:
             return
 
-        if self._mode == "auto":
-            self._camera.set_controls({"AeEnable": True})
-        else:
-            self._camera.set_controls(
-                {
-                    "AeEnable": False,
-                    "ExposureTime": int(self._manual_exposure_time),
-                    "AnalogueGain": float(self._manual_analogue_gain),
-                }
-            )
+        controls: dict[str, object] = {"AeEnable": self._ae_mode == "auto", "AwbEnable": self._awb_mode == "auto"}
+        if self._ae_mode == "manual":
+            controls["ExposureTime"] = int(self._manual_exposure_time)
+            controls["AnalogueGain"] = float(self._manual_analogue_gain)
+        if self._awb_mode == "manual":
+            controls["ColourGains"] = (float(self._manual_red_gain), float(self._manual_blue_gain))
+        self._camera.set_controls(controls)
 
     def _create_preview_configuration(self, camera: Picamera2) -> object:
         return camera.create_video_configuration(
@@ -303,6 +347,7 @@ class CameraService:
             )
             self._apply_settings_locked()
             self._camera.switch_mode_and_capture_file(still_config, path, format=fmt)
+            self._refresh_live_settings_locked()
             try:
                 self._camera.stop()
             except Exception:
@@ -313,6 +358,8 @@ class CameraService:
             self._output = _StreamingOutput()
             self._camera.start_recording(JpegEncoder(), FileOutput(self._output))
             self._refresh_live_settings_locked()
+            self.running = True
+            self._last_error = None
         except Exception as exc:
             self._last_error = f"Failed to capture image: {exc}"
             self.running = False
@@ -326,21 +373,51 @@ class CameraService:
             metadata = self._camera.capture_metadata()
             self._live_exposure_time = self._coerce_int(metadata.get("ExposureTime"))
             self._live_analogue_gain = self._coerce_float(metadata.get("AnalogueGain"))
+            self._live_red_gain, self._live_blue_gain = self._coerce_gain_pair(metadata.get("ColourGains"))
             ae_meta = metadata.get("AeEnable")
-            self._live_ae_enabled = bool(ae_meta) if ae_meta is not None else (self._mode == "auto")
+            awb_meta = metadata.get("AwbEnable")
+            self._live_ae_enabled = bool(ae_meta) if ae_meta is not None else (self._ae_mode == "auto")
+            self._live_awb_enabled = bool(awb_meta) if awb_meta is not None else (self._awb_mode == "auto")
         except Exception as exc:
             self._last_error = f"Failed to read camera metadata: {exc}"
 
+    def _measure_center_rgb_locked(self) -> tuple[float, float, float]:
+        if self._camera is None:
+            raise RuntimeError("Camera is not running")
+
+        frame = self._camera.capture_array("main")
+        if frame is None:
+            raise RuntimeError("Camera did not return an image for white-balance calibration")
+
+        height = int(frame.shape[0])
+        width = int(frame.shape[1])
+        crop_h = max(1, height // 3)
+        crop_w = max(1, width // 3)
+        y0 = max(0, (height - crop_h) // 2)
+        x0 = max(0, (width - crop_w) // 2)
+        center = frame[y0 : y0 + crop_h, x0 : x0 + crop_w]
+
+        red = float(center[..., 0].mean())
+        green = float(center[..., 1].mean())
+        blue = float(center[..., 2].mean())
+        return red, green, blue
+
     def _settings_payload(self) -> dict[str, object]:
         return {
-            "mode": self._mode,
+            "ae_mode": self._ae_mode,
+            "awb_mode": self._awb_mode,
             "exposure_time": self._manual_exposure_time,
             "analogue_gain": self._manual_analogue_gain,
+            "red_gain": self._manual_red_gain,
+            "blue_gain": self._manual_blue_gain,
             "preview_resolution": self._preview_resolution,
             "capture_resolution": self._capture_resolution,
             "live_exposure_time": self._live_exposure_time,
             "live_analogue_gain": self._live_analogue_gain,
+            "live_red_gain": self._live_red_gain,
+            "live_blue_gain": self._live_blue_gain,
             "ae_enabled": self._live_ae_enabled,
+            "awb_enabled": self._live_awb_enabled,
             "last_error": self._last_error,
         }
 
@@ -361,6 +438,17 @@ class CameraService:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    @classmethod
+    def _coerce_gain_pair(cls, value: object) -> tuple[Optional[float], Optional[float]]:
+        if value is None:
+            return None, None
+        try:
+            red = cls._coerce_float(value[0])  # type: ignore[index]
+            blue = cls._coerce_float(value[1])  # type: ignore[index]
+            return red, blue
+        except Exception:
+            return None, None
 
     @staticmethod
     def _parse_resolution(value: str) -> tuple[int, int]:

@@ -8,7 +8,9 @@ import { Label } from "./components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
 import { Separator } from "./components/ui/separator";
 import { Slider } from "./components/ui/slider";
+import { Switch } from "./components/ui/switch";
 import {
+  calibrateWhiteBalanceFromBlankField,
   capture,
   getCameraStatus,
   getHealth,
@@ -16,6 +18,7 @@ import {
   getSerialLog,
   getSerialStatus,
   jog,
+  lockCurrentCameraSettings,
   reconnectSerial,
   releaseSteppers,
   restartCamera,
@@ -25,6 +28,42 @@ import {
   updateCameraSettings,
 } from "./lib/api";
 
+type CameraSettings = {
+  ae_mode: "auto" | "manual";
+  awb_mode: "auto" | "manual";
+  exposure_time: number | null;
+  analogue_gain: number | null;
+  red_gain: number | null;
+  blue_gain: number | null;
+  preview_resolution: string;
+  capture_resolution: string;
+  live_exposure_time: number | null;
+  live_analogue_gain: number | null;
+  ae_enabled: boolean | null;
+  live_red_gain: number | null;
+  live_blue_gain: number | null;
+  awb_enabled: boolean | null;
+  last_error: string | null;
+};
+
+const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
+  ae_mode: "auto",
+  awb_mode: "auto",
+  exposure_time: 10000,
+  analogue_gain: 1.0,
+  red_gain: 1.0,
+  blue_gain: 1.0,
+  preview_resolution: "1920x1080",
+  capture_resolution: "3280x2464",
+  live_exposure_time: null,
+  live_analogue_gain: null,
+  ae_enabled: null,
+  live_red_gain: null,
+  live_blue_gain: null,
+  awb_enabled: null,
+  last_error: null,
+};
+
 function App() {
   const [health, setHealth] = useState("checking");
   const [cameraStatus, setCameraStatus] = useState<{ running: boolean; available: boolean; last_error: string | null }>({
@@ -32,29 +71,11 @@ function App() {
     available: false,
     last_error: null,
   });
-  const [cameraSettings, setCameraSettings] = useState<{
-    mode: "auto" | "manual";
-    exposure_time: number | null;
-    analogue_gain: number | null;
-    preview_resolution: string;
-    capture_resolution: string;
-    live_exposure_time: number | null;
-    live_analogue_gain: number | null;
-    ae_enabled: boolean | null;
-    last_error: string | null;
-  }>({
-    mode: "auto",
-    exposure_time: 10000,
-    analogue_gain: 1.0,
-    preview_resolution: "1920x1080",
-    capture_resolution: "3280x2464",
-    live_exposure_time: null,
-    live_analogue_gain: null,
-    ae_enabled: null,
-    last_error: null,
-  });
+  const [cameraSettings, setCameraSettings] = useState<CameraSettings>(DEFAULT_CAMERA_SETTINGS);
   const [cameraExposureDraft, setCameraExposureDraft] = useState("10000");
   const [cameraGainDraft, setCameraGainDraft] = useState("1.0");
+  const [cameraRedGainDraft, setCameraRedGainDraft] = useState("1.0");
+  const [cameraBlueGainDraft, setCameraBlueGainDraft] = useState("1.0");
   const [previewResolutionDraft, setPreviewResolutionDraft] = useState("1920x1080");
   const [captureResolutionDraft, setCaptureResolutionDraft] = useState("3280x2464");
   const [serialStatus, setSerialStatus] = useState<{ connected: boolean; port: string | null; last_error: string | null }>({
@@ -84,6 +105,45 @@ function App() {
   const previewResolutionOptions = ["1280x720", "1640x1232", "1920x1080"];
   const captureResolutionOptions = ["1920x1080", "1640x1232", "3280x2464"];
 
+  function syncCameraDrafts(settings: CameraSettings) {
+    setCameraExposureDraft(settings.exposure_time == null ? "" : String(settings.exposure_time));
+    setCameraGainDraft(settings.analogue_gain == null ? "" : String(settings.analogue_gain));
+    setCameraRedGainDraft(settings.red_gain == null ? "" : String(settings.red_gain));
+    setCameraBlueGainDraft(settings.blue_gain == null ? "" : String(settings.blue_gain));
+    setPreviewResolutionDraft(settings.preview_resolution);
+    setCaptureResolutionDraft(settings.capture_resolution);
+  }
+
+  function updateCameraState(settings: CameraSettings, refreshStream = false) {
+    setCameraSettings(settings);
+    syncCameraDrafts(settings);
+    cameraSettingsDirtyRef.current = false;
+    if (refreshStream) {
+      setStreamNonce((current) => current + 1);
+    }
+  }
+
+  async function applyCameraSettings(next?: Partial<Pick<CameraSettings, "ae_mode" | "awb_mode">>, refreshStream = false) {
+    const aeMode = next?.ae_mode ?? cameraSettings.ae_mode;
+    const awbMode = next?.awb_mode ?? cameraSettings.awb_mode;
+    const exposureTime = cameraExposureDraft.trim() ? Number(cameraExposureDraft) : null;
+    const analogueGain = cameraGainDraft.trim() ? Number(cameraGainDraft) : null;
+    const redGain = cameraRedGainDraft.trim() ? Number(cameraRedGainDraft) : null;
+    const blueGain = cameraBlueGainDraft.trim() ? Number(cameraBlueGainDraft) : null;
+
+    const settings = await updateCameraSettings(
+      aeMode,
+      awbMode,
+      exposureTime,
+      analogueGain,
+      redGain,
+      blueGain,
+      previewResolutionDraft,
+      captureResolutionDraft
+    );
+    updateCameraState(settings, refreshStream);
+  }
+
   async function refreshPosition() {
     try {
       const p = await getPosition();
@@ -112,10 +172,7 @@ function App() {
       });
       setCameraSettings(cam.settings);
       if (!cameraSettingsDirtyRef.current) {
-        setCameraExposureDraft(cam.settings.exposure_time == null ? "" : String(cam.settings.exposure_time));
-        setCameraGainDraft(cam.settings.analogue_gain == null ? "" : String(cam.settings.analogue_gain));
-        setPreviewResolutionDraft(cam.settings.preview_resolution);
-        setCaptureResolutionDraft(cam.settings.capture_resolution);
+        syncCameraDrafts(cam.settings);
       }
     } catch {
       // ignore
@@ -228,75 +285,142 @@ function App() {
                 ) : null}
               </div>
               <Separator />
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <Label htmlFor="camera-mode">Camera Mode</Label>
-                  <Select
-                    value={cameraSettings.mode}
-                    onValueChange={async (value) => {
-                        const mode = value as "auto" | "manual";
-                      try {
-                        const exposureTime = cameraExposureDraft.trim() ? Number(cameraExposureDraft) : null;
-                        const analogueGain = cameraGainDraft.trim() ? Number(cameraGainDraft) : null;
-                        const settings = await updateCameraSettings(
-                          mode,
-                          exposureTime,
-                          analogueGain,
-                          previewResolutionDraft,
-                          captureResolutionDraft
-                        );
-                        setCameraSettings(settings);
-                        setCameraExposureDraft(settings.exposure_time == null ? "" : String(settings.exposure_time));
-                        setCameraGainDraft(settings.analogue_gain == null ? "" : String(settings.analogue_gain));
-                        setPreviewResolutionDraft(settings.preview_resolution);
-                        setCaptureResolutionDraft(settings.capture_resolution);
-                        cameraSettingsDirtyRef.current = false;
-                        setStreamNonce((current) => current + 1);
-                        setAppError(null);
-                      } catch (error) {
-                        setAppError(error instanceof Error ? error.message : "Failed to update camera mode");
-                      }
-                    }}
-                  >
-                    <SelectTrigger id="camera-mode">
-                      <SelectValue placeholder="Select camera mode" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="auto">Auto</SelectItem>
-                      <SelectItem value="manual">Manual</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label htmlFor="ae-switch">Auto Exposure / Gain</Label>
+                        <p className="text-xs text-muted-foreground">Auto is on when the switch is enabled.</p>
+                      </div>
+                      <Switch
+                        id="ae-switch"
+                        checked={cameraSettings.ae_mode === "auto"}
+                        onCheckedChange={async (checked) => {
+                          try {
+                            await applyCameraSettings({ ae_mode: checked ? "auto" : "manual" });
+                            setAppError(null);
+                          } catch (error) {
+                            setAppError(error instanceof Error ? error.message : "Failed to update exposure mode");
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label htmlFor="awb-switch">Auto White Balance</Label>
+                        <p className="text-xs text-muted-foreground">Auto is on when the switch is enabled.</p>
+                      </div>
+                      <Switch
+                        id="awb-switch"
+                        checked={cameraSettings.awb_mode === "auto"}
+                        onCheckedChange={async (checked) => {
+                          try {
+                            await applyCameraSettings({ awb_mode: checked ? "auto" : "manual" });
+                            setAppError(null);
+                          } catch (error) {
+                            setAppError(error instanceof Error ? error.message : "Failed to update white balance mode");
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div className="space-y-3 rounded-lg border border-border/70 p-4">
+                    <div>
+                      <h3 className="text-sm font-medium">Exposure / Gain</h3>
+                      <p className="text-xs text-muted-foreground">Use auto for live metering, or switch off to lock manual values.</p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="exposure-time">Exposure Time (us)</Label>
+                        <Input
+                          id="exposure-time"
+                          type="number"
+                          min={1}
+                          value={cameraExposureDraft}
+                          disabled={cameraSettings.ae_mode !== "manual"}
+                          onChange={(e) => {
+                            setCameraExposureDraft(e.target.value);
+                            cameraSettingsDirtyRef.current = true;
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="analogue-gain">Analogue Gain</Label>
+                        <Input
+                          id="analogue-gain"
+                          type="number"
+                          min={1}
+                          step="0.1"
+                          value={cameraGainDraft}
+                          disabled={cameraSettings.ae_mode !== "manual"}
+                          onChange={(e) => {
+                            setCameraGainDraft(e.target.value);
+                            cameraSettingsDirtyRef.current = true;
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                      <p>Live Exposure: {cameraSettings.live_exposure_time ?? "n/a"} us</p>
+                      <p>Live Gain: {cameraSettings.live_analogue_gain ?? "n/a"}</p>
+                      <p>AE Enabled: {cameraSettings.ae_enabled == null ? "n/a" : cameraSettings.ae_enabled ? "yes" : "no"}</p>
+                      <p>Mode: {cameraSettings.ae_mode}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-border/70 p-4">
+                    <div>
+                      <h3 className="text-sm font-medium">White Balance</h3>
+                      <p className="text-xs text-muted-foreground">Use auto to watch the camera’s gains, or switch off to hold manual colour gains.</p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="red-gain">Red Gain</Label>
+                        <Input
+                          id="red-gain"
+                          type="number"
+                          min={0.1}
+                          step="0.01"
+                          value={cameraRedGainDraft}
+                          disabled={cameraSettings.awb_mode !== "manual"}
+                          onChange={(e) => {
+                            setCameraRedGainDraft(e.target.value);
+                            cameraSettingsDirtyRef.current = true;
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="blue-gain">Blue Gain</Label>
+                        <Input
+                          id="blue-gain"
+                          type="number"
+                          min={0.1}
+                          step="0.01"
+                          value={cameraBlueGainDraft}
+                          disabled={cameraSettings.awb_mode !== "manual"}
+                          onChange={(e) => {
+                            setCameraBlueGainDraft(e.target.value);
+                            cameraSettingsDirtyRef.current = true;
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                      <p>Live Red Gain: {cameraSettings.live_red_gain ?? "n/a"}</p>
+                      <p>Live Blue Gain: {cameraSettings.live_blue_gain ?? "n/a"}</p>
+                      <p>AWB Enabled: {cameraSettings.awb_enabled == null ? "n/a" : cameraSettings.awb_enabled ? "yes" : "no"}</p>
+                      <p>Mode: {cameraSettings.awb_mode}</p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div className="space-y-1">
-                    <Label htmlFor="exposure-time">Exposure Time (us)</Label>
-                    <Input
-                      id="exposure-time"
-                      type="number"
-                      min={1}
-                      value={cameraExposureDraft}
-                      disabled={cameraSettings.mode !== "manual"}
-                      onChange={(e) => {
-                        setCameraExposureDraft(e.target.value);
-                        cameraSettingsDirtyRef.current = true;
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="analogue-gain">Analogue Gain</Label>
-                    <Input
-                      id="analogue-gain"
-                      type="number"
-                      min={1}
-                      step="0.1"
-                      value={cameraGainDraft}
-                      disabled={cameraSettings.mode !== "manual"}
-                      onChange={(e) => {
-                        setCameraGainDraft(e.target.value);
-                        cameraSettingsDirtyRef.current = true;
-                      }}
-                    />
-                  </div>
                   <div className="space-y-1">
                     <Label htmlFor="preview-resolution">Preview Resolution</Label>
                     <Select
@@ -340,39 +464,52 @@ function App() {
                     </Select>
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    try {
-                      const exposureTime = cameraExposureDraft.trim() ? Number(cameraExposureDraft) : null;
-                      const analogueGain = cameraGainDraft.trim() ? Number(cameraGainDraft) : null;
-                      const settings = await updateCameraSettings(
-                        cameraSettings.mode,
-                        exposureTime,
-                        analogueGain,
-                        previewResolutionDraft,
-                        captureResolutionDraft
-                      );
-                      setCameraSettings(settings);
-                      setCameraExposureDraft(settings.exposure_time == null ? "" : String(settings.exposure_time));
-                      setCameraGainDraft(settings.analogue_gain == null ? "" : String(settings.analogue_gain));
-                      setPreviewResolutionDraft(settings.preview_resolution);
-                      setCaptureResolutionDraft(settings.capture_resolution);
-                      cameraSettingsDirtyRef.current = false;
-                      setStreamNonce((current) => current + 1);
-                      setAppError(null);
-                    } catch (error) {
-                      setAppError(error instanceof Error ? error.message : "Failed to apply camera settings");
-                    }
-                  }}
-                >
-                  Apply Camera Settings
-                </Button>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        await applyCameraSettings(undefined, true);
+                        setAppError(null);
+                      } catch (error) {
+                        setAppError(error instanceof Error ? error.message : "Failed to apply camera settings");
+                      }
+                    }}
+                  >
+                    Apply Camera Settings
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      try {
+                        const settings = await lockCurrentCameraSettings();
+                        updateCameraState(settings);
+                        setAppError(null);
+                      } catch (error) {
+                        setAppError(error instanceof Error ? error.message : "Failed to lock current camera settings");
+                      }
+                    }}
+                  >
+                    Lock Current Camera Settings
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        const settings = await calibrateWhiteBalanceFromBlankField();
+                        updateCameraState(settings);
+                        setAppError(null);
+                      } catch (error) {
+                        setAppError(error instanceof Error ? error.message : "Failed to calibrate white balance");
+                      }
+                    }}
+                  >
+                    Calibrate White Balance from Blank Field
+                  </Button>
+                </div>
+
                 <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground md:grid-cols-2">
-                  <p>Live Exposure: {cameraSettings.live_exposure_time ?? "n/a"} us</p>
-                  <p>Live Gain: {cameraSettings.live_analogue_gain ?? "n/a"}</p>
-                  <p>AE Enabled: {cameraSettings.ae_enabled == null ? "n/a" : cameraSettings.ae_enabled ? "yes" : "no"}</p>
-                  <p>Mode Used: {cameraSettings.mode}</p>
                   <p>Preview Res: {cameraSettings.preview_resolution}</p>
                   <p>Capture Res: {cameraSettings.capture_resolution}</p>
                 </div>
@@ -531,13 +668,7 @@ function App() {
               ].map(({ name, value, setter }) => (
                 <div key={name} className="space-y-1">
                   <Label>{name} ({value})</Label>
-                  <Slider
-                    min={0}
-                    max={255}
-                    step={1}
-                    value={[value]}
-                    onValueChange={(vals) => setter(vals[0] ?? 0)}
-                  />
+                  <Slider min={0} max={255} step={1} value={[value]} onValueChange={(vals) => setter(vals[0] ?? 0)} />
                 </div>
               ))}
               <div className="space-y-1">
@@ -623,7 +754,7 @@ function App() {
               >
                 Capture Image
               </Button>
-              <p className="text-xs text-muted-foreground break-all">{captureInfo}</p>
+              <p className="text-xs break-all text-muted-foreground">{captureInfo}</p>
             </CardContent>
           </Card>
 
